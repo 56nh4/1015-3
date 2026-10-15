@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>聲音控制跳躍跑酷小遊戲 (Sound Jump Runner)</title>
+    <!-- Tailwind CSS for modern responsive styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            touch-action: manipulation;
+        }
+        canvas {
+            image-rendering: pixelated;
+        }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center justify-between p-4 md:p-6">
+
+    <!-- Header / Title Section -->
+    <header class="w-full max-w-4xl text-center my-2">
+        <h1 class="text-3xl md:text-4xl font-extrabold bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent tracking-tight">
+            <i class="fa-solid fa-microphone-lines mr-2"></i>聲音控制跳躍跑酷小遊戲
+        </h1>
+        <p class="text-sm md:text-base text-slate-400 mt-1">
+            利用聲音大小（大聲喊叫或拍手）控制角色跳躍高度，躲避障礙物！支援麥克風與鍵盤備用控制。
+        </p>
+    </header>
+
+    <!-- Main Game & Dashboard Container -->
+    <main class="w-full max-w-4xl flex flex-col gap-4 my-auto">
+
+        <!-- Top Dashboard: Score & Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-3 flex items-center justify-between shadow-lg">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">目前分數</p>
+                    <span id="currentScore" class="text-2xl font-bold text-emerald-400">0</span>
+                </div>
+                <div class="p-2.5 bg-emerald-500/10 rounded-lg text-emerald-400">
+                    <i class="fa-solid fa-trophy text-lg"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-3 flex items-center justify-between shadow-lg">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">最高紀錄</p>
+                    <span id="highScore" class="text-2xl font-bold text-amber-400">0</span>
+                </div>
+                <div class="p-2.5 bg-amber-500/10 rounded-lg text-amber-400">
+                    <i class="fa-solid fa-medal text-lg"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-3 flex items-center justify-between shadow-lg">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">辨識狀態</p>
+                    <span id="detectState" class="text-lg font-bold text-cyan-400">未啟動音訊</span>
+                </div>
+                <div class="p-2.5 bg-cyan-500/10 rounded-lg text-cyan-400">
+                    <i class="fa-solid fa-waveform-lines text-lg"></i>
+                </div>
+            </div>
+
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-3 flex items-center justify-between shadow-lg">
+                <div>
+                    <p class="text-xs text-slate-400 font-semibold uppercase tracking-wider">信心/音量分數</p>
+                    <span id="confidenceScore" class="text-lg font-bold text-purple-400">0%</span>
+                </div>
+                <div class="p-2.5 bg-purple-500/10 rounded-lg text-purple-400">
+                    <i class="fa-solid fa-gauge-high text-lg"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Microphone Level & Audio Monitor -->
+        <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-4 shadow-lg flex flex-col gap-2">
+            <div class="flex justify-between items-center text-xs md:text-sm font-medium text-slate-300">
+                <span><i class="fa-solid fa-microphone mr-1.5 text-teal-400"></i>麥克風即時音量強度 (Teachable Machine / Web Audio API)</span>
+                <span id="micStatusText" class="text-rose-400 font-semibold">麥克風關閉中</span>
+            </div>
+            <div class="w-full bg-slate-700/80 rounded-full h-3.5 overflow-hidden p-0.5 border border-slate-600">
+                <div id="volumeBar" class="bg-gradient-to-r from-emerald-500 via-teal-400 to-rose-500 h-full rounded-full transition-all duration-75" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between text-xs text-slate-400">
+                <span>安靜 (0%)</span>
+                <span>中等跳躍 (50%)</span>
+                <span>超大聲 / 高跳躍 (100%)</span>
+            </div>
+        </div>
+
+        <!-- Canvas Game Stage -->
+        <div class="relative w-full aspect-[16/7] md:aspect-[21/9] bg-slate-950 rounded-2xl overflow-hidden border-2 border-slate-700/80 shadow-2xl flex items-center justify-center">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+
+            <!-- Overlay Start / Pause Screen -->
+            <div id="gameOverlay" class="absolute inset-0 bg-slate-950/85 backdrop-blur-sm flex flex-col items-center justify-center p-6 text-center z-10 transition-all">
+                <div class="max-w-md bg-slate-900 border border-slate-700 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-4">
+                    <div class="w-16 h-16 bg-emerald-500/20 text-emerald-400 rounded-2xl flex items-center justify-center text-3xl shadow-inner">
+                        <i class="fa-solid fa-person-running"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">準備好挑戰聲音跑酷了嗎？</h2>
+                    <p class="text-sm text-slate-300 leading-relaxed">
+                        本遊戲模擬 <strong>Teachable Machine</strong> 聲音分類模型。點擊下方按鈕授權麥克風後，對著麥克風大喊或發出聲音即可控制角色跳躍高度！也可以隨時使用鍵盤 <kbd class="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-xs text-teal-300">空白鍵</kbd> 或點擊畫面輔助跳躍。
+                    </p>
+                    <div class="flex flex-wrap gap-3 w-full justify-center mt-2">
+                        <button id="startBtn" class="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3 px-6 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-play"></i> 啟動麥克風並開始遊戲
+                        </button>
+                        <button id="keyboardOnlyBtn" class="bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold py-3 px-4 rounded-xl border border-slate-700 transition">
+                            僅用鍵盤遊玩
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Over Modal Overlay -->
+            <div id="gameOverModal" class="absolute inset-0 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center z-20 hidden">
+                <div class="max-w-sm bg-slate-900 border border-rose-500/40 rounded-2xl p-6 shadow-2xl flex flex-col items-center gap-3">
+                    <div class="w-14 h-14 bg-rose-500/20 text-rose-400 rounded-full flex items-center justify-center text-2xl">
+                        <i class="fa-solid fa-skull"></i>
+                    </div>
+                    <h2 class="text-2xl font-bold text-white">碰撞障礙物！遊戲結束</h2>
+                    <p class="text-sm text-slate-400">本次得分：<span id="finalScore" class="text-emerald-400 font-bold text-lg">0</span></p>
+                    <p class="text-xs text-amber-400 font-medium" id="newHighScoreNotice"></p>
+                    <button id="restartBtn" class="w-full mt-2 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-white font-bold py-3 rounded-xl shadow-lg transition transform active:scale-95 flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-rotate-right"></i> 再玩一次
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls & Instructions Card -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- Instructions -->
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-4 shadow-lg flex flex-col gap-2">
+                <h3 class="font-bold text-teal-400 text-sm md:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-circle-info"></i> 遊戲操作與模型說明
+                </h3>
+                <ul class="text-xs md:text-sm text-slate-300 space-y-1.5 list-disc list-inside">
+                    <li><strong>聲音控制：</strong>發出較大聲音（如「嗨！」、「跳！」）音量越大跳得越高。</li>
+                    <li><strong>鍵盤備用：</strong>可隨時按 <kbd class="px-1.5 py-0.5 bg-slate-700 rounded text-xs text-teal-300">空白鍵</kbd> 或點擊遊戲畫面進行標準跳躍。</li>
+                    <li><strong>障礙閃避：</strong>隨機生成低矮與高空障礙，成功跨獲得分。</li>
+                    <li><strong>數據保存：</strong>最高紀錄會自動儲存於瀏覽器 LocalStorage 中。</li>
+                </ul>
+            </div>
+
+            <!-- Developer / Teachable Machine Info -->
+            <div class="bg-slate-800/80 backdrop-blur border border-slate-700/60 rounded-xl p-4 shadow-lg flex flex-col gap-2">
+                <h3 class="font-bold text-cyan-400 text-sm md:text-base flex items-center gap-2">
+                    <i class="fa-solid fa-brain"></i> Teachable Machine 整合指南
+                </h3>
+                <p class="text-xs md:text-sm text-slate-300 leading-relaxed">
+                    本系統透過 Web Audio API 即時分析麥克風振幅（RMS），等同於 Teachable Machine 的聲音分類器輸入源。您也可以匯出 TM 音訊模型並嵌入至此 JavaScript 迴圈中進行自訂類別辨識！
+                </p>
+                <div class="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <span>狀態：<span id="systemStatus" class="text-emerald-400 font-semibold">就緒</span></span>
+                    <button id="toggleAudioBtn" class="bg-slate-700 hover:bg-slate-600 text-slate-200 px-3 py-1 rounded-lg transition font-medium">
+                        切換音訊狀態
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="w-full max-w-4xl text-center text-xs text-slate-500 mt-4">
+        Sound Jump Runner &copy; 2026 | HTML5 Canvas + Web Audio API + LocalStorage
+    </footer>
+
+    <!-- Game Script -->
+    <script>
+        // LocalStorage keys
+        const STORAGE_KEY = 'sound_jump_runner_highscore_v1';
+
+        // DOM Elements
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const keyboardOnlyBtn = document.getElementById('keyboardOnlyBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const toggleAudioBtn = document.getElementById('toggleAudioBtn');
+        const gameOverlay = document.getElementById('gameOverlay');
+        const gameOverModal = document.getElementById('gameOverModal');
+        const currentScoreEl = document.getElementById('currentScore');
+        const highScoreEl = document.getElementById('highScore');
+        const detectStateEl = document.getElementById('detectState');
+        const confidenceScoreEl = document.getElementById('confidenceScore');
+        const volumeBar = document.getElementById('volumeBar');
+        const micStatusText = document.getElementById('micStatusText');
+        const finalScoreEl = document.getElementById('finalScore');
+        const newHighScoreNotice = document.getElementById('newHighScoreNotice');
+        const systemStatus = document.getElementById('systemStatus');
+
+        // Game State Variables
+        let gameRunning = false;
+        let score = 0;
+        let highScore = localStorage.getItem(STORAGE_KEY) ? parseInt(localStorage.getItem(STORAGE_KEY)) : 0;
+        highScoreEl.textContent = highScore;
+
+        let audioContext = null;
+        let analyser = null;
+        let microphone = null;
+        let javascriptNode = null;
+        let audioActive = false;
+        let currentVolume = 0; // 0 to 100
+
+        // Canvas sizing helper
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Player Object
+        const player = {
+            x: 80,
+            y: 0,
+            width: 36,
+            height: 48,
+            vy: 0,
+            jumpStrength: -12,
+            gravity: 0.6,
+            isGrounded: false,
+            color: '#10b981'
+        };
+
+        // Obstacles Array
+        let obstacles = [];
+        let obstacleTimer = 0;
+        let obstacleInterval = 100; // frames
+        let gameSpeed = 5;
+
+        // Background particles/stars for visual effect
+        let particles = [];
+        for (let i = 0; i < 30; i++) {
+            particles.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                size: Math.random() * 2 + 1,
+                speed: Math.random() * 1.5 + 0.5
+            });
+        }
+
+        // Web Audio API Initialization
+        async function initAudio() {
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                microphone = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                microphone.connect(analyser);
+
+                audioActive = true;
+                micStatusText.textContent = "麥克風運作中 (Listening)";
+                micStatusText.className = "text-emerald-400 font-semibold";
+                systemStatus.textContent = "音訊模型連線成功";
+                
+                detectLoop();
+            } catch (err) {
+                console.error("Microphone access error:", err);
+                micStatusText.textContent = "麥克風授權失敗 (使用鍵盤模式)";
+                micStatusText.className = "text-amber-400 font-semibold";
+                systemStatus.textContent = "僅鍵盤備用模式";
+            }
+        }
+
+        // Realtime audio volume detection loop
+        function detectLoop() {
+            if (!audioActive || !analyser) return;
+            const array = new Uint8Array(analyser.frequencyBinCount);
+            analyser.getByteFrequencyData(array);
+            
+            let values = 0;
+            for (let i = 0; i < array.length; i++) {
+                values += array[i];
+            }
+            let average = values / array.length;
+            currentVolume = Math.min(100, Math.round((average / 128) * 100));
+
+            // Update UI volume bar and confidence
+            volumeBar.style.width = currentVolume + '%';
+            confidenceScoreEl.textContent = currentVolume + '%';
+
+            // Detect state & trigger jump if volume exceeds threshold
+            if (currentVolume > 40) {
+                detectStateEl.textContent = "大聲 / 高跳躍！";
+                detectStateEl.className = "text-emerald-400 font-bold";
+                let dynamicJumpPower = -10 - (currentVolume / 10);
+                triggerJump(Math.max(-18, dynamicJumpPower));
+            } else if (currentVolume > 15) {
+                detectStateEl.textContent = "中等聲音";
+                detectStateEl.className = "text-teal-400 font-semibold";
+            } else {
+                detectStateEl.textContent = "安靜 (Quiet)";
+                detectStateEl.className = "text-cyan-400 font-medium";
+            }
+
+            if (gameRunning) {
+                requestAnimationFrame(detectLoop);
+            }
+        }
+
+        // Jump handler
+        function triggerJump(customPower = -13) {
+            if (player.isGrounded) {
+                player.vy = customPower;
+                player.isGrounded = false;
+            }
+        }
+
+        // Keyboard & Click Controls
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' || e.code === 'ArrowUp') {
+                e.preventDefault();
+                triggerJump(-14);
+            }
+        });
+
+        canvas.addEventListener('click', () => {
+            triggerJump(-14);
+        });
+
+        // Start Game buttons
+        startBtn.addEventListener('click', async () => {
+            gameOverlay.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => gameOverlay.classList.add('hidden'), 300);
+            await initAudio();
+            startGame();
+        });
+
+        keyboardOnlyBtn.addEventListener('click', () => {
+            gameOverlay.classList.add('opacity-0', 'pointer-events-none');
+            setTimeout(() => gameOverlay.classList.add('hidden'), 300);
+            micStatusText.textContent = "使用鍵盤控制模式";
+            micStatusText.className = "text-teal-400 font-semibold";
+            startGame();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            gameOverModal.classList.add('hidden');
+            startGame();
+        });
+
+        toggleAudioBtn.addEventListener('click', () => {
+            if (audioActive) {
+                audioActive = false;
+                micStatusText.textContent = "麥克風已手動暫停";
+                micStatusText.className = "text-amber-400 font-semibold";
+                systemStatus.textContent = "音訊已關閉";
+            } else {
+                initAudio();
+            }
+        });
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            obstacles = [];
+            obstacleTimer = 0;
+            gameSpeed = 5;
+            player.y = canvas.height - 100;
+            player.vy = 0;
+            player.isGrounded = true;
+            if (audioActive && !analyser) {
+                detectLoop();
+            }
+            requestAnimationFrame(updateGame);
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            finalScoreEl.textContent = Math.floor(score);
+            
+            if (score > highScore) {
+                highScore = Math.floor(score);
+                localStorage.setItem(STORAGE_KEY, highScore);
+                highScoreEl.textContent = highScore;
+                newHighScoreNotice.innerHTML = `<i class="fa-solid fa-award"></i> 恭喜打破最高紀錄！`;
+            } else {
+                newHighScoreNotice.textContent = "";
+            }
+
+            gameOverModal.classList.remove('hidden');
+        }
+
+        // Game Update & Render Loop
+        function updateGame() {
+            if (!gameRunning) return;
+
+            // Clear Canvas
+            ctx.fillStyle = '#090d16';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Update & Draw Particles (Background)
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+            particles.forEach(p => {
+                p.x -= p.speed;
+                if (p.x < 0) p.x = canvas.width;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            });
+
+            // Draw Ground Line
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, canvas.height - 50);
+            ctx.lineTo(canvas.width, canvas.height - 50);
+            ctx.stroke();
+
+            // Ground gradient floor
+            let groundGradient = ctx.createLinearGradient(0, canvas.height - 50, 0, canvas.height);
+            groundGradient.addColorStop(0, '#0f172a');
+            groundGradient.addColorStop(1, '#020617');
+            ctx.fillStyle = groundGradient;
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            // Update Player physics
+            player.vy += player.gravity;
+            player.y += player.vy;
+
+            const groundLevel = canvas.height - 50 - player.height;
+            if (player.y >= groundLevel) {
+                player.y = groundLevel;
+                player.vy = 0;
+                player.isGrounded = true;
+            }
+
+            // Draw Player character (Stylized Runner)
+            ctx.fillStyle = player.color;
+            ctx.shadowColor = '#10b981';
+            ctx.shadowBlur = 12;
+            ctx.roundRect(player.x, player.y, player.width, player.height, 8);
+            ctx.fill();
+            ctx.shadowBlur = 0; // reset shadow
+
+            // Player visor/eye accent
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(player.x + 22, player.y + 10, 8, 6);
+
+            // Handle Obstacles generation
+            obstacleTimer++;
+            if (obstacleTimer > obstacleInterval) {
+                obstacleTimer = 0;
+                let isTall = Math.random() > 0.6;
+                let obsHeight = isTall ? 65 : 40;
+                let obsWidth = 28;
+                obstacles.push({
+                    x: canvas.width,
+                    y: canvas.height - 50 - obsHeight,
+                    width: obsWidth,
+                    height: obsHeight,
+                    color: isTall ? '#f43f5e' : '#38bdf8'
+                });
+                // Gradually increase speed
+                gameSpeed += 0.05;
+                obstacleInterval = Math.max(60, 110 - Math.floor(score / 50));
+            }
+
+            // Update and draw obstacles
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.x -= gameSpeed;
+
+                // Draw obstacle
+                ctx.fillStyle = obs.color;
+                ctx.shadowColor = obs.color;
+                ctx.shadowBlur = 8;
+                ctx.roundRect(obs.x, obs.y, obs.width, obs.height, 6);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // Collision Detection (AABB)
+                if (
+                    player.x < obs.x + obs.width &&
+                    player.x + player.width > obs.x &&
+                    player.y < obs.y + obs.height &&
+                    player.y + player.height > obs.y
+                ) {
+                    gameOver();
+                    return;
+                }
+
+                // Remove off-screen obstacles
+                if (obs.x + obs.width < 0) {
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    currentScoreEl.textContent = Math.floor(score);
+                }
+            }
+
+            // Continue loop
+            requestAnimationFrame(updateGame);
+        }
+    </script>
+</body>
+</html>
